@@ -91,7 +91,7 @@ class MisskimoBot(discord.Client):
     def _is_direct_mention(
         self, message: discord.Message, bot_user: Optional[Any]
     ) -> bool:
-        """Check if the bot user was directly mentioned in the message."""
+        """Check if the bot user was directly mentioned or replied to in the message."""
         if bot_user is None:
             return False
 
@@ -101,9 +101,17 @@ class MisskimoBot(discord.Client):
 
         if hasattr(bot_user, "mentioned_in") and callable(bot_user.mentioned_in):
             try:
-                return bool(bot_user.mentioned_in(message))
+                if bot_user.mentioned_in(message):
+                    return True
             except Exception:
-                return False
+                pass
+
+        # Check if message is a Discord reply to Misskimo (even if author disabled @ping)
+        ref = getattr(message, "reference", None)
+        if ref is not None:
+            resolved = getattr(ref, "resolved", None)
+            if resolved is not None and getattr(resolved, "author", None) == bot_user:
+                return True
 
         return False
 
@@ -181,7 +189,11 @@ class MisskimoBot(discord.Client):
                 roast = roast[:2000]
 
             if is_direct_mention:
-                await message.reply(roast, mention_author=False)
+                try:
+                    await message.reply(roast, mention_author=False)
+                except Exception:
+                    # Fallback to standard channel message if original message was deleted
+                    await message.channel.send(roast)
             else:
                 await message.channel.send(roast)
 

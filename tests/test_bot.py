@@ -423,3 +423,42 @@ async def test_on_message_handles_exception_gracefully():
 
     msg.reply.assert_not_called()
     msg.channel.send.assert_not_called()
+
+
+def test_should_respond_reply_reference_to_bot():
+    """Replying to Misskimo without @ping should still count as direct mention."""
+    bot = make_bot()
+    msg = make_message(channel_id=100)
+    msg.mentions = []
+    
+    # Mock message reference resolving to bot's message
+    resolved_msg = MagicMock()
+    resolved_msg.author = bot.user
+    msg.reference = MagicMock()
+    msg.reference.resolved = resolved_msg
+
+    should_resp, is_mention = bot.should_respond(msg)
+    assert should_resp is True
+    assert is_mention is True
+
+
+@pytest.mark.asyncio
+async def test_on_message_reply_failure_falls_back_to_channel_send():
+    """If replying fails (e.g. original message deleted), send to channel directly."""
+    bot = make_bot()
+    bot.engine.generate_roast = AsyncMock(return_value="Still roasting you.")
+    msg = make_message(
+        content="@Misskimo hello",
+        author_name="Ghost",
+        channel_id=100,
+        mentions=[bot.user],
+    )
+    msg.reply.side_effect = Exception("Message deleted (NotFound)")
+
+    await bot.on_message(msg)
+
+    msg.reply.assert_awaited_once()
+    msg.channel.send.assert_awaited_once_with("Still roasting you.")
+    history = bot.history.get_history(100)
+    assert history[-1]["content"] == "Still roasting you."
+
