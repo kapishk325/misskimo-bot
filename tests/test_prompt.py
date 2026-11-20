@@ -40,6 +40,16 @@ def test_system_prompt_persona_and_backstory_details():
     assert "one-liner" in prompt_lower
 
 
+def test_system_prompt_talkable_calibration():
+    """Verify that system prompt enforces talkable first and earned roasts only."""
+    prompt_lower = MISSKIMO_SYSTEM_PROMPT.lower()
+    assert "talkable first" in prompt_lower
+    assert "normal conversation is the default" in prompt_lower
+    assert "conversation examples" in prompt_lower
+    assert "roasts are earned only" in prompt_lower
+    assert "do not roast unprovoked" in prompt_lower
+
+
 def test_build_chat_messages_structure():
     """Verify OpenAI-compatible payload structure for direct mentions."""
     messages = build_chat_messages(
@@ -56,6 +66,8 @@ def test_build_chat_messages_structure():
     assert "Alex" in messages[1]["content"]
     assert "Misskimo do you like me?" in messages[1]["content"]
     assert "directly mentioned" in messages[1]["content"].lower() or "direct" in messages[1]["content"].lower()
+    assert "[Response Directive]:" in messages[1]["content"]
+    assert "talking normally" in messages[1]["content"].lower()
 
 
 def test_build_chat_messages_autonomous_chime():
@@ -72,6 +84,7 @@ def test_build_chat_messages_autonomous_chime():
     assert "500 anime figures" in messages[1]["content"]
     user_content_lower = messages[1]["content"].lower()
     assert "autonomous" in user_content_lower or "unprompted" in user_content_lower or "chime" in user_content_lower
+    assert "[Response Directive]:" in messages[1]["content"]
 
 
 def test_build_chat_messages_empty_history():
@@ -86,6 +99,19 @@ def test_build_chat_messages_empty_history():
     assert messages[1]["role"] == "user"
     assert "Charlie" in messages[1]["content"]
     assert "Hello?" in messages[1]["content"]
+
+
+def test_build_chat_messages_includes_user_memory():
+    """Verify user_memory parameter is included in payload when provided."""
+    messages = build_chat_messages(
+        history_context="",
+        current_speaker="Ken",
+        current_message="Yo",
+        is_direct_mention=True,
+        user_memory="[Your Personal Memory about Ken]: Trusted ally.",
+    )
+    assert "[Your Personal Memory about Ken]: Trusted ally." in messages[1]["content"]
+
 
 
 def test_build_chat_messages_returns_fresh_list_and_dicts():

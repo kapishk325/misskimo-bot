@@ -22,3 +22,7 @@ htmlcov/
 
 # Superpowers local state
 .superpowers/
+
+# Runtime data
+data/
+
