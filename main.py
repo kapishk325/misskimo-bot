@@ -1,9 +1,12 @@
 """Main entrypoint for Misskimo Discord Bot."""
 
 import logging
+import os
 import signal
 import sys
-from typing import Any
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any, Optional
 
 from misskimo.bot import MisskimoBot
 from misskimo.config import load_config
@@ -11,6 +14,30 @@ from misskimo.engine import GroqRoastEngine
 from misskimo.history_buffer import ChannelHistoryManager
 
 logger = logging.getLogger("misskimo")
+
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    """Minimal HTTP handler to satisfy Render's web service health check."""
+
+    def do_GET(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(b'{"status":"ok","bot":"misskimo"}\n')
+
+    def log_message(self, format: str, *args: Any) -> None:
+        """Silence standard HTTP request access logging."""
+        pass
+
+
+def start_healthcheck_server(port: int) -> HTTPServer:
+    """Start healthcheck HTTP server in background daemon thread."""
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    logger.info("Healthcheck HTTP server running on port %d", port)
+    return server
+
 
 
 def setup_logging() -> None:
@@ -59,6 +86,15 @@ def main() -> None:
     history = ChannelHistoryManager(max_messages=config.max_history_messages)
     engine = GroqRoastEngine(api_key=config.groq_api_key, model=config.groq_model)
     bot = MisskimoBot(config=config, history=history, engine=engine)
+
+    port_env = os.getenv("PORT")
+    if port_env:
+        try:
+            start_healthcheck_server(int(port_env))
+        except Exception as exc:
+            logger.warning(
+                "Could not bind healthcheck server to port %s: %s", port_env, exc
+            )
 
     try:
         bot.run(config.discord_token, log_handler=None)
