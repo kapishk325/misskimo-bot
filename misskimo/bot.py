@@ -5,6 +5,7 @@ import random
 import time
 from typing import Any, Optional
 import discord
+from discord import app_commands
 
 from misskimo.config import Config
 from misskimo.engine import GroqRoastEngine
@@ -26,7 +27,7 @@ class MisskimoBot(discord.Client):
         memory: Optional[UserMemoryManager] = None,
         **kwargs: Any,
     ) -> None:
-        """Initialize Misskimo bot client with intents and runtime state."""
+        """Initialize Misskimo bot client with intents, slash commands, and runtime state."""
         intents = kwargs.pop("intents", None)
         if intents is None:
             intents = discord.Intents.default()
@@ -41,6 +42,82 @@ class MisskimoBot(discord.Client):
         self.memory = memory if memory is not None else UserMemoryManager()
         self.last_chime_times: dict[int, float] = {}
         self._user: Optional[Any] = None
+        self.tree = app_commands.CommandTree(self)
+        self._register_commands()
+
+    def _register_commands(self) -> None:
+        """Register application slash commands."""
+
+        @self.tree.command(
+            name="grouptalk",
+            description="Initiate a group discussion or roast circle with Misskimo.",
+        )
+        @app_commands.describe(
+            topic="Optional topic or question for the channel (e.g. 'who has the worst sleep schedule?')"
+        )
+        async def grouptalk_slash(
+            interaction: discord.Interaction, topic: Optional[str] = None
+        ) -> None:
+            await self._handle_grouptalk_interaction(interaction, topic)
+
+    async def _handle_grouptalk_interaction(
+        self, interaction: discord.Interaction, topic: Optional[str] = None
+    ) -> None:
+        """Handle execution of the /grouptalk slash command."""
+        try:
+            await interaction.response.defer(thinking=True)
+        except Exception:
+            pass
+
+        channel_id = interaction.channel_id
+        caller_name = (
+            getattr(interaction.user, "display_name", getattr(interaction.user, "name", "Someone"))
+            if interaction.user
+            else "Someone"
+        )
+
+        history_context = (
+            self.history.format_history_for_prompt(channel_id)
+            if channel_id
+            else "[No history]"
+        )
+
+        history_items = self.history.get_history(channel_id) if channel_id else []
+        seen_names = set()
+        participants_list = []
+        for item in history_items:
+            name = item.get("author", "Someone")
+            if name != "Misskimo" and name not in seen_names:
+                seen_names.add(name)
+                participants_list.append(name)
+
+        participants_summary = (
+            ", ".join(participants_list) if participants_list else caller_name
+        )
+
+        chat_messages = build_group_talk_messages(
+            history_context=history_context,
+            caller_name=caller_name,
+            topic=topic,
+            participants_summary=participants_summary,
+        )
+
+        try:
+            roast = await self.engine.generate_roast(chat_messages)
+            if not roast:
+                roast = "..."
+            if len(roast) > 2000:
+                roast = roast[:2000]
+
+            await interaction.followup.send(roast)
+            if channel_id:
+                self.history.add_message(channel_id, "Misskimo", roast)
+        except Exception as exc:
+            logger.error("Error executing /grouptalk slash command: %s", exc, exc_info=True)
+            try:
+                await interaction.followup.send("Failed to speak right now. Try again.")
+            except Exception:
+                pass
 
     @property
     def user(self) -> Optional[Any]:
@@ -55,7 +132,7 @@ class MisskimoBot(discord.Client):
         self._user = value
 
     async def on_ready(self) -> None:
-        """Handle gateway ready event and set bot presence."""
+        """Handle gateway ready event, sync slash commands, and set bot presence."""
         logger.info("Misskimo logged in as %s", self.user)
         await self.change_presence(
             activity=discord.Activity(
@@ -63,6 +140,12 @@ class MisskimoBot(discord.Client):
                 name="Tokyo rain | don't",
             )
         )
+        try:
+            synced = await self.tree.sync()
+            logger.info("Synced %d application slash commands.", len(synced))
+        except Exception as exc:
+            logger.warning("Could not sync application slash commands: %s", exc)
+
 
     def should_respond(self, message: discord.Message) -> tuple[bool, bool]:
         """Determine whether Misskimo should respond to a Discord message.

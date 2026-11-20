@@ -72,6 +72,7 @@ Secretly exhausted from being her own shield 24/7, Misskimo short-circuits when 
 1. On the left sidebar, go to **OAuth2** -> **URL Generator**.
 2. Under **Scopes**, select:
    - `bot`
+   - `applications.commands` (REQUIRED for `/grouptalk` slash command)
 3. Under **Bot Permissions**, select:
    - `Send Messages`
    - `Send Messages in Threads`
@@ -79,6 +80,10 @@ Secretly exhausted from being her own shield 24/7, Misskimo short-circuits when 
    - `Read Message History`
 4. Copy the generated **Invite URL** at the bottom of the page.
 5. Paste the URL into your browser, select your server, and click **Authorize**.
+
+Or use this pre-configured 1-click invite link:
+👉 **[Invite Misskimo (with Slash Commands)](https://discord.com/oauth2/authorize?client_id=1573415000280797336&permissions=274877975552&scope=bot%20applications.commands)**
+
 
 ---
 

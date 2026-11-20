@@ -91,3 +91,32 @@ async def test_on_message_handles_grouptalk_command(tmp_path):
 
     bot.engine.generate_roast.assert_awaited_once()
     msg.channel.send.assert_awaited_once_with("Listen up everyone, let's talk about this room.")
+
+
+def test_grouptalk_slash_command_registered(tmp_path):
+    bot = make_bot(tmp_path)
+    cmd = bot.tree.get_command("grouptalk")
+    assert cmd is not None
+    assert cmd.name == "grouptalk"
+    assert "group discussion" in cmd.description.lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_grouptalk_interaction(tmp_path):
+    bot = make_bot(tmp_path)
+    bot.engine.generate_roast = AsyncMock(return_value="Misskimo addressing the room.")
+
+    interaction = MagicMock()
+    interaction.channel_id = 200
+    interaction.user.display_name = "Alex"
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
+
+    await bot._handle_grouptalk_interaction(interaction, topic="who has the worst fits?")
+
+    interaction.response.defer.assert_awaited_once_with(thinking=True)
+    bot.engine.generate_roast.assert_awaited_once()
+    interaction.followup.send.assert_awaited_once_with("Misskimo addressing the room.")
+    history = bot.history.get_history(200)
+    assert history[-1]["content"] == "Misskimo addressing the room."
+
