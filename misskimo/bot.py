@@ -131,6 +131,15 @@ class MisskimoBot(discord.Client):
         if channel_id is None:
             return
 
+        if getattr(message.author, "bot", False):
+            return
+
+        if (
+            self.config.allowed_channel_ids
+            and channel_id not in self.config.allowed_channel_ids
+        ):
+            return
+
         author_name = getattr(
             message.author, "display_name", getattr(message.author, "name", "Unknown")
         )

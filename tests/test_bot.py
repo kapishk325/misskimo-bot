@@ -275,6 +275,28 @@ async def test_on_message_ignores_self_message():
 
 
 @pytest.mark.asyncio
+async def test_on_message_ignores_bot_authors_from_history():
+    """Messages from other bots are ignored and not recorded in history."""
+    bot = make_bot()
+    msg = make_message(content="Beep boop", author_name="OtherBot", is_bot=True)
+
+    await bot.on_message(msg)
+
+    assert len(bot.history.get_history(100)) == 0
+
+
+@pytest.mark.asyncio
+async def test_on_message_ignores_disallowed_channels_from_history():
+    """Messages from channels not in allowed_channel_ids are not recorded in history."""
+    bot = make_bot(allowed_channel_ids=[100, 200])
+    msg = make_message(content="Secret room banter", author_name="Bob", channel_id=999)
+
+    await bot.on_message(msg)
+
+    assert len(bot.history.get_history(999)) == 0
+
+
+@pytest.mark.asyncio
 async def test_on_message_direct_mention_flow():
     """Direct mention triggers typing, reply without author ping, and updates history & cooldown."""
     bot = make_bot()

@@ -1,0 +1,21 @@
+services:
+  - type: worker
+    name: misskimo-discord-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: qwen/qwen3.8-27b
+      - key: ALLOWED_CHANNEL_IDS
+        sync: false
+      - key: CHIME_CHANCE
+        value: "0.12"
+      - key: COOLDOWN_SECONDS
+        value: "45"
+      - key: MAX_HISTORY_MESSAGES
+        value: "10"
