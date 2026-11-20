@@ -17,6 +17,8 @@ class Config:
     chime_chance: float = 0.12
     cooldown_seconds: int = 45
     max_history_messages: int = 10
+    allow_bot_replies: bool = True
+    max_consecutive_bot_replies: int = 5
 
 
 def _parse_channel_ids(raw_value: str) -> list[int]:
@@ -66,6 +68,10 @@ def load_config(env_path: Optional[str] = None) -> Config:
     cooldown_seconds = int(os.getenv("COOLDOWN_SECONDS", "45"))
     max_history_messages = int(os.getenv("MAX_HISTORY_MESSAGES", "10"))
 
+    raw_allow_bot = os.getenv("ALLOW_BOT_REPLIES", "true").strip().lower()
+    allow_bot_replies = raw_allow_bot in ("true", "1", "yes", "on")
+    max_consecutive_bot_replies = int(os.getenv("MAX_CONSECUTIVE_BOT_REPLIES", "5"))
+
     return Config(
         discord_token=discord_token,
         groq_api_key=groq_api_key,
@@ -74,4 +80,6 @@ def load_config(env_path: Optional[str] = None) -> Config:
         chime_chance=chime_chance,
         cooldown_seconds=cooldown_seconds,
         max_history_messages=max_history_messages,
+        allow_bot_replies=allow_bot_replies,
+        max_consecutive_bot_replies=max_consecutive_bot_replies,
     )

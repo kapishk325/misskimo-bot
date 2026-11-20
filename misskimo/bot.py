@@ -1,9 +1,10 @@
-"""Discord bot client and autonomous trigger engine for Misskimo."""
+"""Discord bot client, autonomous message handler, and event loop for Misskimo."""
 
 import logging
 import random
 import time
 from typing import Any, Optional
+
 import discord
 from discord import app_commands
 
@@ -13,11 +14,11 @@ from misskimo.history_buffer import ChannelHistoryManager
 from misskimo.prompt import build_chat_messages, build_group_talk_messages
 from misskimo.user_memory import UserMemoryManager
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("misskimo.bot")
 
 
 class MisskimoBot(discord.Client):
-    """Misskimo Discord bot client with autonomous trigger, per-user memory, and roast generation."""
+    """Discord bot client running Misskimo persona with autonomous triggers."""
 
     def __init__(
         self,
@@ -41,6 +42,7 @@ class MisskimoBot(discord.Client):
         self.engine = engine
         self.memory = memory if memory is not None else UserMemoryManager()
         self.last_chime_times: dict[int, float] = {}
+        self.consecutive_bot_replies: dict[int, int] = {}
         self._user: Optional[Any] = None
         self.tree = app_commands.CommandTree(self)
         self._register_commands()
@@ -50,7 +52,7 @@ class MisskimoBot(discord.Client):
 
         @self.tree.command(
             name="grouptalk",
-            description="Initiate a group discussion or roast circle with Misskimo.",
+            description="Initiate a group discussion or roast circle with Milk.",
         )
         @app_commands.describe(
             topic="Optional topic or question for the channel (e.g. 'who has the worst sleep schedule?')"
@@ -87,7 +89,7 @@ class MisskimoBot(discord.Client):
         participants_list = []
         for item in history_items:
             name = item.get("author", "Someone")
-            if name != "Misskimo" and name not in seen_names:
+            if name not in ("Milk", "Misskimo") and name not in seen_names:
                 seen_names.add(name)
                 participants_list.append(name)
 
@@ -111,7 +113,7 @@ class MisskimoBot(discord.Client):
 
             await interaction.followup.send(roast)
             if channel_id:
-                self.history.add_message(channel_id, "Misskimo", roast)
+                self.history.add_message(channel_id, "Milk", roast)
         except Exception as exc:
             logger.error("Error executing /grouptalk slash command: %s", exc, exc_info=True)
             try:
@@ -146,7 +148,6 @@ class MisskimoBot(discord.Client):
         except Exception as exc:
             logger.warning("Could not sync application slash commands: %s", exc)
 
-
     def should_respond(self, message: discord.Message) -> tuple[bool, bool]:
         """Determine whether Misskimo should respond to a Discord message.
 
@@ -157,9 +158,15 @@ class MisskimoBot(discord.Client):
             tuple[bool, bool]: (should_respond, is_direct_mention)
         """
         bot_user = self.user
-        if getattr(message.author, "bot", False) or (
-            bot_user is not None and message.author == bot_user
-        ):
+        is_self = bot_user is not None and (
+            message.author == bot_user
+            or getattr(message.author, "id", None) == getattr(bot_user, "id", None)
+        )
+        if is_self:
+            return (False, False)
+
+        is_bot = getattr(message.author, "bot", False)
+        if is_bot and not self.config.allow_bot_replies:
             return (False, False)
 
         channel_id = getattr(message.channel, "id", None)
@@ -169,8 +176,22 @@ class MisskimoBot(discord.Client):
         ):
             return (False, False)
 
+        # Loop protection: if replying to another bot and limit reached, do not respond
+        if is_bot and channel_id is not None:
+            if self.consecutive_bot_replies.get(channel_id, 0) >= self.config.max_consecutive_bot_replies:
+                logger.info(
+                    "Bot reply loop limit (%d) reached in channel %s; suppressing bot reply.",
+                    self.config.max_consecutive_bot_replies,
+                    channel_id,
+                )
+                return (False, False)
+
         if self._is_direct_mention(message, bot_user):
             return (True, True)
+
+        # Do NOT autonomously chime in on background chatter from other bots
+        if is_bot:
+            return (False, False)
 
         return self._should_autonomous_chime(channel_id)
 
@@ -224,7 +245,7 @@ class MisskimoBot(discord.Client):
         text = content.strip()
         bot_user = self.user
         if bot_user and hasattr(bot_user, "id"):
-            for prefix in (f"<@{bot_user.id}>", f"<@!{bot_user.id}>", "@misskimo"):
+            for prefix in (f"<@{bot_user.id}>", f"<@!{bot_user.id}>", "@milk", "milk", "@misskimo"):
                 if text.lower().startswith(prefix.lower()):
                     text = text[len(prefix):].strip()
 
@@ -239,20 +260,32 @@ class MisskimoBot(discord.Client):
     async def on_message(self, message: discord.Message) -> None:
         """Handle incoming Discord message, buffer history, and dispatch response."""
         bot_user = self.user
-        if bot_user is not None and message.author == bot_user:
+        if bot_user is not None and (
+            message.author == bot_user
+            or getattr(message.author, "id", None) == getattr(bot_user, "id", None)
+        ):
             return
 
         channel_id = getattr(message.channel, "id", None)
         if channel_id is None:
             return
 
-        if getattr(message.author, "bot", False):
+        is_bot = getattr(message.author, "bot", False)
+        if is_bot and not self.config.allow_bot_replies:
             return
 
         if (
             self.config.allowed_channel_ids
             and channel_id not in self.config.allowed_channel_ids
         ):
+            return
+
+        # Human message resets consecutive bot replies counter for this channel
+        if not is_bot:
+            self.consecutive_bot_replies[channel_id] = 0
+
+        # Loop protection check for bot authors
+        if is_bot and self.consecutive_bot_replies.get(channel_id, 0) >= self.config.max_consecutive_bot_replies:
             return
 
         author_name = getattr(
@@ -273,7 +306,7 @@ class MisskimoBot(discord.Client):
             participants_list = []
             for item in history_items:
                 name = item.get("author", "Someone")
-                if name != "Misskimo" and name not in seen_names:
+                if name not in ("Milk", "Misskimo") and name not in seen_names:
                     seen_names.add(name)
                     participants_list.append(name)
 
@@ -344,7 +377,17 @@ class MisskimoBot(discord.Client):
             else:
                 await message.channel.send(roast)
 
-            self.history.add_message(channel_id, "Misskimo", roast)
+            self.history.add_message(channel_id, "Milk", roast)
+
+            # Update loop protection tracking
+            is_bot = getattr(message.author, "bot", False)
+            if is_bot:
+                self.consecutive_bot_replies[channel_id] = (
+                    self.consecutive_bot_replies.get(channel_id, 0) + 1
+                )
+            else:
+                self.consecutive_bot_replies[channel_id] = 0
+
             # Record memory of this interaction
             if author_id:
                 self.memory.record_interaction(author_id, author_name, message.content, roast)

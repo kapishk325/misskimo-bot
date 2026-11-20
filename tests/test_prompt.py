@@ -5,8 +5,9 @@ from misskimo.prompt import MISSKIMO_SYSTEM_PROMPT, build_chat_messages
 
 
 def test_system_prompt_core_invariants():
-    """Verify core invariants required for Misskimo's identity."""
+    """Verify core invariants required for Milk's identity."""
     prompt_lower = MISSKIMO_SYSTEM_PROMPT.lower()
+    assert "milk" in prompt_lower
     assert "misskimo" in prompt_lower
     assert "never break character" in prompt_lower
     assert "not an ai" in prompt_lower

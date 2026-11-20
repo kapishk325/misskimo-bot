@@ -15,6 +15,8 @@ def make_bot(
     allowed_channel_ids: list[int] | None = None,
     chime_chance: float = 0.5,
     cooldown_seconds: int = 30,
+    allow_bot_replies: bool = True,
+    max_consecutive_bot_replies: int = 5,
 ) -> MisskimoBot:
     """Helper to create a configured MisskimoBot with mock dependencies."""
     if allowed_channel_ids is None:
@@ -26,6 +28,8 @@ def make_bot(
         allowed_channel_ids=allowed_channel_ids,
         chime_chance=chime_chance,
         cooldown_seconds=cooldown_seconds,
+        allow_bot_replies=allow_bot_replies,
+        max_consecutive_bot_replies=max_consecutive_bot_replies,
     )
     history = ChannelHistoryManager()
     engine = MagicMock(spec=GroqRoastEngine)
@@ -113,14 +117,45 @@ async def test_on_ready_sets_presence():
 # --- Trigger & Filter Tests (should_respond) ---
 
 
-def test_should_respond_ignores_bots():
-    """Bot authors should always be ignored."""
+def test_should_respond_ignores_unprompted_bots():
+    """Bot authors without direct mention should be ignored for autonomous chime."""
     bot = make_bot()
     msg = make_message(is_bot=True)
 
     should_resp, is_mention = bot.should_respond(msg)
     assert should_resp is False
     assert is_mention is False
+
+
+def test_should_respond_responds_to_other_bots_on_direct_mention():
+    """Other bots directly mentioning Misskimo should trigger a response."""
+    bot = make_bot(allow_bot_replies=True)
+    msg = make_message(is_bot=True, mentions=[bot.user])
+
+    should_resp, is_mention = bot.should_respond(msg)
+    assert should_resp is True
+    assert is_mention is True
+
+
+def test_should_respond_ignores_other_bots_when_disabled():
+    """When allow_bot_replies is False, other bots are ignored even if mentioned."""
+    bot = make_bot(allow_bot_replies=False)
+    msg = make_message(is_bot=True, mentions=[bot.user])
+
+    should_resp, is_mention = bot.should_respond(msg)
+    assert should_resp is False
+    assert is_mention is False
+
+
+def test_should_respond_blocks_bot_loops_at_limit():
+    """When consecutive_bot_replies reaches limit, further bot messages are blocked."""
+    bot = make_bot(allow_bot_replies=True, max_consecutive_bot_replies=3)
+    bot.consecutive_bot_replies[100] = 3
+    msg = make_message(channel_id=100, is_bot=True, mentions=[bot.user])
+
+    should_resp, _ = bot.should_respond(msg)
+    assert should_resp is False
+
 
 
 def test_should_respond_ignores_self_user():
@@ -275,14 +310,60 @@ async def test_on_message_ignores_self_message():
 
 
 @pytest.mark.asyncio
-async def test_on_message_ignores_bot_authors_from_history():
-    """Messages from other bots are ignored and not recorded in history."""
-    bot = make_bot()
+async def test_on_message_ignores_bot_authors_when_disabled():
+    """Messages from other bots are ignored when allow_bot_replies is False."""
+    bot = make_bot(allow_bot_replies=False)
     msg = make_message(content="Beep boop", author_name="OtherBot", is_bot=True)
 
     await bot.on_message(msg)
 
     assert len(bot.history.get_history(100)) == 0
+
+
+@pytest.mark.asyncio
+async def test_on_message_records_bot_authors_when_enabled():
+    """Messages from other bots are recorded in history when allow_bot_replies is True."""
+    bot = make_bot(allow_bot_replies=True)
+    msg = make_message(content="Beep boop", author_name="OtherBot", is_bot=True)
+
+    await bot.on_message(msg)
+
+    history = bot.history.get_history(100)
+    assert len(history) == 1
+    assert history[0]["author"] == "OtherBot"
+
+
+@pytest.mark.asyncio
+async def test_on_message_bot_reply_increments_counter():
+    """Replying to another bot increments consecutive_bot_replies counter."""
+    bot = make_bot(allow_bot_replies=True)
+    bot.engine.generate_roast = AsyncMock(return_value="Shut up bot.")
+    msg = make_message(
+        content="@Misskimo hello from bot",
+        author_name="OtherBot",
+        channel_id=100,
+        is_bot=True,
+        mentions=[bot.user],
+    )
+
+    await bot.on_message(msg)
+
+    assert bot.consecutive_bot_replies[100] == 1
+
+
+@pytest.mark.asyncio
+async def test_on_message_human_resets_bot_counter():
+    """Human message resets consecutive_bot_replies counter for that channel."""
+    bot = make_bot(allow_bot_replies=True)
+    bot.consecutive_bot_replies[100] = 4
+    msg = make_message(
+        content="Hey everyone", author_name="Alice", channel_id=100, is_bot=False
+    )
+
+    await bot.on_message(msg)
+
+    assert bot.consecutive_bot_replies[100] == 0
+
 
 
 @pytest.mark.asyncio
@@ -325,7 +406,7 @@ async def test_on_message_direct_mention_flow():
     assert len(history) == 2
     assert history[0] == {"author": "Charlie", "content": "@Misskimo roast me"}
     assert history[1] == {
-        "author": "Misskimo",
+        "author": "Milk",
         "content": "You talk too much for someone saying nothing.",
     }
 
@@ -356,7 +437,7 @@ async def test_on_message_autonomous_chime_flow():
     history = bot.history.get_history(100)
     assert len(history) == 2
     assert history[1] == {
-        "author": "Misskimo",
+        "author": "Milk",
         "content": "Your confidence is wild.",
     }
 

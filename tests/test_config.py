@@ -15,7 +15,6 @@ def isolate_ambient_dotenv(monkeypatch):
     monkeypatch.setattr("misskimo.config.load_dotenv", patched_load_dotenv)
 
 
-
 def test_load_config_defaults(monkeypatch):
     monkeypatch.setenv("DISCORD_TOKEN", "fake_discord_token")
     monkeypatch.setenv("GROQ_API_KEY", "gsk_fake_key")
@@ -24,6 +23,8 @@ def test_load_config_defaults(monkeypatch):
     monkeypatch.delenv("CHIME_CHANCE", raising=False)
     monkeypatch.delenv("COOLDOWN_SECONDS", raising=False)
     monkeypatch.delenv("MAX_HISTORY_MESSAGES", raising=False)
+    monkeypatch.delenv("ALLOW_BOT_REPLIES", raising=False)
+    monkeypatch.delenv("MAX_CONSECUTIVE_BOT_REPLIES", raising=False)
 
     config = load_config()
     assert config.discord_token == "fake_discord_token"
@@ -33,6 +34,8 @@ def test_load_config_defaults(monkeypatch):
     assert config.cooldown_seconds == 45
     assert config.max_history_messages == 10
     assert config.allowed_channel_ids == []
+    assert config.allow_bot_replies is True
+    assert config.max_consecutive_bot_replies == 5
 
 
 def test_load_config_custom_values(monkeypatch):
@@ -43,6 +46,8 @@ def test_load_config_custom_values(monkeypatch):
     monkeypatch.setenv("CHIME_CHANCE", "0.25")
     monkeypatch.setenv("COOLDOWN_SECONDS", "30")
     monkeypatch.setenv("MAX_HISTORY_MESSAGES", "15")
+    monkeypatch.setenv("ALLOW_BOT_REPLIES", "false")
+    monkeypatch.setenv("MAX_CONSECUTIVE_BOT_REPLIES", "8")
 
     config = load_config()
     assert config.discord_token == "custom_token"
@@ -52,6 +57,8 @@ def test_load_config_custom_values(monkeypatch):
     assert config.chime_chance == 0.25
     assert config.cooldown_seconds == 30
     assert config.max_history_messages == 15
+    assert config.allow_bot_replies is False
+    assert config.max_consecutive_bot_replies == 8
 
 
 def test_load_config_channel_ids_formatting(monkeypatch):
@@ -87,12 +94,16 @@ def test_load_config_from_env_file(tmp_path, monkeypatch):
         "DISCORD_TOKEN=file_token\n"
         "GROQ_API_KEY=file_key\n"
         "ALLOWED_CHANNEL_IDS=111,222\n"
+        "ALLOW_BOT_REPLIES=true\n"
+        "MAX_CONSECUTIVE_BOT_REPLIES=10\n"
     )
 
     config = load_config(env_path=str(env_file))
     assert config.discord_token == "file_token"
     assert config.groq_api_key == "file_key"
     assert config.allowed_channel_ids == [111, 222]
+    assert config.allow_bot_replies is True
+    assert config.max_consecutive_bot_replies == 10
 
 
 def test_config_immutability():
@@ -101,4 +112,4 @@ def test_config_immutability():
         groq_api_key="key",
     )
     with pytest.raises(FrozenInstanceError):
-        config.discord_token = "new_token"  # type: ignore
+        config.groq_model = "new-model"
