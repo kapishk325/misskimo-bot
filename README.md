@@ -33,6 +33,8 @@ Secretly exhausted from being her own shield 24/7, Misskimo short-circuits when 
 ## Architecture & Features
 
 - **Blazing Fast Groq Inference:** Powered by Groq Cloud's LPU inference engine (`qwen/qwen3.8-27b`) delivering ~300+ tokens/second for instantaneous, sub-second roasts.
+- **Per-User Memory & Relationship Engine:** Misskimo remembers individual people across chats! She tracks your interaction history, remembers how you treat her, and maintains different rapport tiers (`stranger`, `acquaintance`, `homie`, `clown`, `soft_spot`). If you bring her coffee or act respectful, she develops a soft spot; if you flex or troll, she tags you as a clown on her roast radar.
+- **Group Talk Mode (`!grouptalk [topic]`):** Initiate a group conversation circle. Misskimo takes the floor, reviews the channel's recent conversation, calls out active members by name, speaks on the requested topic, and challenges the entire room to debate.
 - **Context-Aware Rolling History:** Maintains an in-memory rolling buffer of recent channel messages (default: 10 messages) to understand who is talking to whom and roast with contextual precision.
 - **Autonomous Chime-In Engine:** Periodically interrupts conversations based on a configurable probability (`CHIME_CHANCE=0.12`) and channel cooldown (`COOLDOWN_SECONDS=45`).
 - **Channel Whitelisting:** Restrict autonomous roasts to specific channels, or leave blank to monitor all channels the bot can view.

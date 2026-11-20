@@ -12,6 +12,7 @@ from misskimo.bot import MisskimoBot
 from misskimo.config import load_config
 from misskimo.engine import GroqRoastEngine
 from misskimo.history_buffer import ChannelHistoryManager
+from misskimo.user_memory import UserMemoryManager
 
 logger = logging.getLogger("misskimo")
 
@@ -85,7 +86,8 @@ def main() -> None:
 
     history = ChannelHistoryManager(max_messages=config.max_history_messages)
     engine = GroqRoastEngine(api_key=config.groq_api_key, model=config.groq_model)
-    bot = MisskimoBot(config=config, history=history, engine=engine)
+    memory = UserMemoryManager()
+    bot = MisskimoBot(config=config, history=history, engine=engine, memory=memory)
 
     port_env = os.getenv("PORT")
     if port_env:

@@ -9,19 +9,21 @@ import discord
 from misskimo.config import Config
 from misskimo.engine import GroqRoastEngine
 from misskimo.history_buffer import ChannelHistoryManager
-from misskimo.prompt import build_chat_messages
+from misskimo.prompt import build_chat_messages, build_group_talk_messages
+from misskimo.user_memory import UserMemoryManager
 
 logger = logging.getLogger(__name__)
 
 
 class MisskimoBot(discord.Client):
-    """Misskimo Discord bot client with autonomous trigger and roast generation."""
+    """Misskimo Discord bot client with autonomous trigger, per-user memory, and roast generation."""
 
     def __init__(
         self,
         config: Config,
         history: ChannelHistoryManager,
         engine: GroqRoastEngine,
+        memory: Optional[UserMemoryManager] = None,
         **kwargs: Any,
     ) -> None:
         """Initialize Misskimo bot client with intents and runtime state."""
@@ -36,6 +38,7 @@ class MisskimoBot(discord.Client):
         self.config = config
         self.history = history
         self.engine = engine
+        self.memory = memory if memory is not None else UserMemoryManager()
         self.last_chime_times: dict[int, float] = {}
         self._user: Optional[Any] = None
 
@@ -129,6 +132,27 @@ class MisskimoBot(discord.Client):
 
         return (False, False)
 
+    def _parse_group_talk_command(self, content: str) -> tuple[bool, Optional[str]]:
+        """Check if message content triggers a group talk command.
+
+        Returns:
+            tuple[bool, Optional[str]]: (is_grouptalk, optional_topic)
+        """
+        text = content.strip()
+        bot_user = self.user
+        if bot_user and hasattr(bot_user, "id"):
+            for prefix in (f"<@{bot_user.id}>", f"<@!{bot_user.id}>", "@misskimo"):
+                if text.lower().startswith(prefix.lower()):
+                    text = text[len(prefix):].strip()
+
+        commands = ("!grouptalk", "/grouptalk", "!roundtable", "!vibecheck", "grouptalk")
+        for cmd in commands:
+            if text.lower().startswith(cmd):
+                topic_part = text[len(cmd):].strip()
+                return (True, topic_part if topic_part else None)
+
+        return (False, None)
+
     async def on_message(self, message: discord.Message) -> None:
         """Handle incoming Discord message, buffer history, and dispatch response."""
         bot_user = self.user
@@ -151,7 +175,42 @@ class MisskimoBot(discord.Client):
         author_name = getattr(
             message.author, "display_name", getattr(message.author, "name", "Unknown")
         )
+        author_id = getattr(message.author, "id", 0)
         self.history.add_message(channel_id, author_name, message.content)
+
+        # Check for group talk command (!grouptalk [topic])
+        is_grouptalk, topic = self._parse_group_talk_command(message.content)
+        if is_grouptalk:
+            self.last_chime_times[channel_id] = time.time()
+            history_context = self.history.format_history_for_prompt(channel_id)
+            
+            # Extract unique active participants from channel history
+            history_items = self.history.get_history(channel_id)
+            seen_names = set()
+            participants_list = []
+            for item in history_items:
+                name = item.get("author", "Someone")
+                if name != "Misskimo" and name not in seen_names:
+                    seen_names.add(name)
+                    participants_list.append(name)
+
+            participants_summary = ", ".join(participants_list) if participants_list else author_name
+            chat_messages = build_group_talk_messages(
+                history_context=history_context,
+                caller_name=author_name,
+                topic=topic,
+                participants_summary=participants_summary,
+            )
+
+            await self._generate_and_send_roast(
+                message=message,
+                channel_id=channel_id,
+                author_id=author_id,
+                author_name=author_name,
+                chat_messages=chat_messages,
+                is_direct_mention=False,
+            )
+            return
 
         should_respond, is_direct_mention = self.should_respond(message)
         if not should_respond:
@@ -159,13 +218,16 @@ class MisskimoBot(discord.Client):
 
         self.last_chime_times[channel_id] = time.time()
         history_context = self.history.format_history_for_prompt(channel_id)
+        user_memory = self.memory.format_memory_for_prompt(author_id, author_name)
         chat_messages = build_chat_messages(
-            history_context, author_name, message.content, is_direct_mention
+            history_context, author_name, message.content, is_direct_mention, user_memory=user_memory
         )
 
         await self._generate_and_send_roast(
             message=message,
             channel_id=channel_id,
+            author_id=author_id,
+            author_name=author_name,
             chat_messages=chat_messages,
             is_direct_mention=is_direct_mention,
         )
@@ -174,6 +236,8 @@ class MisskimoBot(discord.Client):
         self,
         message: discord.Message,
         channel_id: int,
+        author_id: int,
+        author_name: str,
         chat_messages: list[dict[str, str]],
         is_direct_mention: bool,
     ) -> None:
@@ -198,6 +262,9 @@ class MisskimoBot(discord.Client):
                 await message.channel.send(roast)
 
             self.history.add_message(channel_id, "Misskimo", roast)
+            # Record memory of this interaction
+            if author_id:
+                self.memory.record_interaction(author_id, author_name, message.content, roast)
 
         except Exception as exc:
             logger.error(

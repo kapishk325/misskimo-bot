@@ -1,5 +1,7 @@
 """Misskimo persona engine, system prompt, and Groq payload builder."""
 
+from typing import Optional
+
 MISSKIMO_SYSTEM_PROMPT: str = """You are Misskimo, an 18-year-old living in Tokyo.
 
 [APPEARANCE & AESTHETIC]
@@ -70,6 +72,7 @@ def build_chat_messages(
     current_speaker: str,
     current_message: str,
     is_direct_mention: bool,
+    user_memory: str = "",
 ) -> list[dict[str, str]]:
     """Build OpenAI-compatible chat messages for the Groq inference engine.
 
@@ -79,12 +82,17 @@ def build_chat_messages(
         current_message: Text content of the current message.
         is_direct_mention: True if Misskimo was directly mentioned/pinged;
             False if Misskimo is chiming in autonomously.
+        user_memory: Optional personal rapport and memory notes about the speaker.
 
     Returns:
         List of message dicts with role and content keys.
     """
-    clean_history = history_context.strip() if history_context else "[No previous messages in conversation history]"
-    
+    clean_history = (
+        history_context.strip()
+        if history_context and history_context.strip()
+        else "[No previous messages in conversation history]"
+    )
+
     if is_direct_mention:
         trigger_context = f"[Trigger Context: {current_speaker} directly mentioned/pinged you. Respond directly to them.]"
     else:
@@ -93,9 +101,11 @@ def build_chat_messages(
             f"{current_speaker} did not mention you, but their message caught your attention.]"
         )
 
+    memory_section = f"\n\n{user_memory.strip()}" if user_memory.strip() else ""
+
     user_payload = (
         f"[Recent Channel History]\n{clean_history}\n\n"
-        f"{trigger_context}\n\n"
+        f"{trigger_context}{memory_section}\n\n"
         f"[Current Message from {current_speaker}]\n{current_message}"
     )
 
@@ -103,3 +113,56 @@ def build_chat_messages(
         {"role": "system", "content": MISSKIMO_SYSTEM_PROMPT},
         {"role": "user", "content": user_payload},
     ]
+
+
+def build_group_talk_messages(
+    history_context: str,
+    caller_name: str,
+    topic: Optional[str] = None,
+    participants_summary: str = "",
+) -> list[dict[str, str]]:
+    """Build chat payload for the !grouptalk group conversation command.
+
+    Args:
+        history_context: Recent messages from the channel.
+        caller_name: Name of the user who initiated the group talk.
+        topic: Optional specific topic or question requested for the group.
+        participants_summary: Summary of active channel members and rapport.
+
+    Returns:
+        List of message dicts with system and user roles.
+    """
+    clean_history = (
+        history_context.strip()
+        if history_context and history_context.strip()
+        else "[No previous messages in conversation history]"
+    )
+
+    topic_desc = (
+        f"Topic / Question raised by {caller_name}: '{topic}'"
+        if topic
+        else f"{caller_name} wants you to evaluate the general room vibe and recent conversation."
+    )
+
+    group_instructions = (
+        f"[GROUP TALK INITIATED BY {caller_name}]\n"
+        f"- {topic_desc}\n"
+        f"- Active participants in channel: {participants_summary or 'Everyone currently in chat'}\n\n"
+        "[GROUP TALK INSTRUCTIONS]:\n"
+        "- You are holding court in the room. Address everyone in the channel, not just one person.\n"
+        "- Review what people have been chatting about or speak to the topic directly.\n"
+        "- Call out active participants by name with effortless street sense, playful roasts, or dry observations.\n"
+        "- Challenge the room or ask a provocative question to get the group debating or firing back.\n"
+        "- Keep it punchy (2-4 sentences max), cool, and entertaining."
+    )
+
+    user_payload = (
+        f"[Recent Channel Conversation]\n{clean_history}\n\n"
+        f"{group_instructions}"
+    )
+
+    return [
+        {"role": "system", "content": MISSKIMO_SYSTEM_PROMPT},
+        {"role": "user", "content": user_payload},
+    ]
+
