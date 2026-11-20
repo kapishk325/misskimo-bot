@@ -1,6 +1,19 @@
 from dataclasses import FrozenInstanceError
+from dotenv import load_dotenv as real_load_dotenv
 import pytest
 from misskimo.config import Config, load_config
+
+
+@pytest.fixture(autouse=True)
+def isolate_ambient_dotenv(monkeypatch):
+    """Ensure test suite remains hermetic and does not read local .env files unless explicitly requested."""
+    def patched_load_dotenv(dotenv_path=None, **kwargs):
+        if dotenv_path is not None:
+            return real_load_dotenv(dotenv_path=dotenv_path, **kwargs)
+        return False
+
+    monkeypatch.setattr("misskimo.config.load_dotenv", patched_load_dotenv)
+
 
 
 def test_load_config_defaults(monkeypatch):
