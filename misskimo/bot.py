@@ -135,7 +135,7 @@ class MisskimoBot(discord.Client):
 
     async def on_ready(self) -> None:
         """Handle gateway ready event, sync slash commands, and set bot presence."""
-        logger.info("Misskimo logged in as %s", self.user)
+        logger.info("Milk logged in as %s", self.user)
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.listening,
@@ -144,9 +144,36 @@ class MisskimoBot(discord.Client):
         )
         try:
             synced = await self.tree.sync()
-            logger.info("Synced %d application slash commands.", len(synced))
+            logger.info("Synced %d global application slash commands.", len(synced))
         except Exception as exc:
-            logger.warning("Could not sync application slash commands: %s", exc)
+            logger.warning("Could not sync global application slash commands: %s", exc)
+
+        for guild in getattr(self, "guilds", []):
+            try:
+                self.tree.copy_global_to(guild=guild)
+                synced_guild = await self.tree.sync(guild=guild)
+                logger.info(
+                    "Synced %d slash commands to guild %s (%s).",
+                    len(synced_guild),
+                    getattr(guild, "name", "unknown"),
+                    getattr(guild, "id", "unknown"),
+                )
+            except Exception as exc:
+                logger.warning("Could not sync slash commands to guild %s: %s", getattr(guild, "id", None), exc)
+
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        """Sync slash commands immediately when joining a new guild."""
+        try:
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
+            logger.info(
+                "Synced slash commands to newly joined guild %s (%s).",
+                getattr(guild, "name", "unknown"),
+                getattr(guild, "id", "unknown"),
+            )
+        except Exception as exc:
+            logger.warning("Could not sync slash commands to new guild %s: %s", getattr(guild, "id", None), exc)
+
 
     def should_respond(self, message: discord.Message) -> tuple[bool, bool]:
         """Determine whether Misskimo should respond to a Discord message.
@@ -243,17 +270,49 @@ class MisskimoBot(discord.Client):
             tuple[bool, Optional[str]]: (is_grouptalk, optional_topic)
         """
         text = content.strip()
+        if not text:
+            return (False, None)
+
+        # Strip bot mentions / names from start
+        prefixes = ["@milk", "milk", "@misskimo", "misskimo"]
         bot_user = self.user
         if bot_user and hasattr(bot_user, "id"):
-            for prefix in (f"<@{bot_user.id}>", f"<@!{bot_user.id}>", "@milk", "milk", "@misskimo"):
-                if text.lower().startswith(prefix.lower()):
-                    text = text[len(prefix):].strip()
+            prefixes.extend([f"<@{bot_user.id}>", f"<@!{bot_user.id}>"])
 
-        commands = ("!grouptalk", "/grouptalk", "!roundtable", "!vibecheck", "grouptalk")
-        for cmd in commands:
-            if text.lower().startswith(cmd):
-                topic_part = text[len(cmd):].strip()
-                return (True, topic_part if topic_part else None)
+        # Strip matching bot name prefixes with word boundaries
+        matched_prefix = True
+        while matched_prefix:
+            matched_prefix = False
+            for p in prefixes:
+                if text.lower().startswith(p.lower()):
+                    rest = text[len(p):]
+                    if not rest or rest[0] in " \t:,!/.-":
+                        text = rest.lstrip(" \t:,!/.-")
+                        matched_prefix = True
+                        break
+
+        # Known variations of group discussion commands
+        known_commands = (
+            "group talk",
+            "grouptalk",
+            "group-talk",
+            "group_talk",
+            "round table",
+            "roundtable",
+            "vibe check",
+            "vibecheck",
+        )
+
+        cleaned = text.lstrip("!/?. ")
+        for cmd in known_commands:
+            if cleaned.lower().startswith(cmd):
+                after_cmd = cleaned[len(cmd):]
+                if not after_cmd or after_cmd[0] in " \t:,!?-":
+                    topic_part = after_cmd.lstrip(" \t:,!?-")
+                    for t_prefix in ("topic:", "topic=", "about:", "about="):
+                        if topic_part.lower().startswith(t_prefix):
+                            topic_part = topic_part[len(t_prefix):].strip()
+                    return (True, topic_part if topic_part else None)
 
         return (False, None)
 

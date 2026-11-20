@@ -58,6 +58,7 @@ def make_bot(tmp_path):
 def test_is_group_talk_command(tmp_path):
     bot = make_bot(tmp_path)
     
+    # Standard prefix commands
     is_gt, topic = bot._parse_group_talk_command("!grouptalk who has bad taste?")
     assert is_gt is True
     assert topic == "who has bad taste?"
@@ -66,9 +67,46 @@ def test_is_group_talk_command(tmp_path):
     assert is_gt2 is True
     assert topic2 is None
 
+    # Variations with space ("group talk")
+    is_gt_space, topic_space = bot._parse_group_talk_command("group talk")
+    assert is_gt_space is True
+    assert topic_space is None
+
+    is_gt_space_excl, topic_space_excl = bot._parse_group_talk_command("!group talk who's asleep?")
+    assert is_gt_space_excl is True
+    assert topic_space_excl == "who's asleep?"
+
+    is_gt_slash, topic_slash = bot._parse_group_talk_command("/group talk")
+    assert is_gt_slash is True
+    assert topic_slash is None
+
+    # Milk prefixes and topic specifiers
+    is_gt_milk, topic_milk = bot._parse_group_talk_command("Milk group talk who has the worst fits?")
+    assert is_gt_milk is True
+    assert topic_milk == "who has the worst fits?"
+
+    is_gt_colon, topic_colon = bot._parse_group_talk_command("Milk: group talk topic: weekend plans")
+    assert is_gt_colon is True
+    assert topic_colon == "weekend plans"
+
+    is_gt_at, topic_at = bot._parse_group_talk_command("@milk grouptalk")
+    assert is_gt_at is True
+
+    # Other aliases
+    is_gt_vibe, _ = bot._parse_group_talk_command("vibe check")
+    assert is_gt_vibe is True
+
+    is_gt_round, _ = bot._parse_group_talk_command("!round table")
+    assert is_gt_round is True
+
+    # Non-command chatter
     is_gt3, topic3 = bot._parse_group_talk_command("just chatting normally")
     assert is_gt3 is False
     assert topic3 is None
+
+    is_gt4, topic4 = bot._parse_group_talk_command("milk is good for bones")
+    assert is_gt4 is False
+    assert topic4 is None
 
 
 @pytest.mark.asyncio
