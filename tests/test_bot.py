@@ -365,6 +365,28 @@ async def test_on_message_human_resets_bot_counter():
     assert bot.consecutive_bot_replies[100] == 0
 
 
+@pytest.mark.asyncio
+async def test_on_message_blocks_bot_loops_at_limit():
+    """When consecutive_bot_replies reaches limit, on_message halts without sending roast."""
+    bot = make_bot(allow_bot_replies=True, max_consecutive_bot_replies=3)
+    bot.consecutive_bot_replies[100] = 3
+    bot.engine.generate_roast = AsyncMock()
+    msg = make_message(
+        content="@Milk ping",
+        author_name="OtherBot",
+        channel_id=100,
+        is_bot=True,
+        mentions=[bot.user],
+    )
+
+    await bot.on_message(msg)
+
+    bot.engine.generate_roast.assert_not_called()
+    msg.reply.assert_not_called()
+    assert len(bot.history.get_history(100)) == 0
+
+
+
 
 @pytest.mark.asyncio
 async def test_on_message_ignores_disallowed_channels_from_history():

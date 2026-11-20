@@ -286,6 +286,12 @@ class MisskimoBot(discord.Client):
 
         # Loop protection check for bot authors
         if is_bot and self.consecutive_bot_replies.get(channel_id, 0) >= self.config.max_consecutive_bot_replies:
+            logger.info(
+                "Bot reply loop limit (%d) reached in channel %s; suppressing bot message from %s.",
+                self.config.max_consecutive_bot_replies,
+                channel_id,
+                getattr(message.author, "display_name", getattr(message.author, "name", "bot")),
+            )
             return
 
         author_name = getattr(
