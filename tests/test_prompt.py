@@ -114,6 +114,20 @@ def test_build_chat_messages_includes_user_memory():
     assert "[Your Personal Memory about Ken]: Trusted ally." in messages[1]["content"]
 
 
+def test_build_chat_messages_speaker_is_bot():
+    """Verify payload guidance when speaker is another bot."""
+    messages = build_chat_messages(
+        history_context="",
+        current_speaker="StatsBot",
+        current_message="Server uptime is 99.9%",
+        is_direct_mention=True,
+        is_speaker_bot=True,
+    )
+    assert "StatsBot is another bot" in messages[1]["content"]
+    assert "mention and address them by name" in messages[1]["content"].lower()
+
+
+
 
 def test_build_chat_messages_returns_fresh_list_and_dicts():
     """Verify immutability: returns new list and dict objects on each call."""

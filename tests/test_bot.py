@@ -349,6 +349,7 @@ async def test_on_message_bot_reply_increments_counter():
     await bot.on_message(msg)
 
     assert bot.consecutive_bot_replies[100] == 1
+    msg.reply.assert_awaited_once_with("Shut up bot.", mention_author=True)
 
 
 @pytest.mark.asyncio

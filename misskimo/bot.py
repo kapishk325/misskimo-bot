@@ -401,7 +401,12 @@ class MisskimoBot(discord.Client):
         history_context = self.history.format_history_for_prompt(channel_id)
         user_memory = self.memory.format_memory_for_prompt(author_id, author_name)
         chat_messages = build_chat_messages(
-            history_context, author_name, message.content, is_direct_mention, user_memory=user_memory
+            history_context,
+            author_name,
+            message.content,
+            is_direct_mention,
+            user_memory=user_memory,
+            is_speaker_bot=is_bot,
         )
 
         await self._generate_and_send_roast(
@@ -435,7 +440,8 @@ class MisskimoBot(discord.Client):
 
             if is_direct_mention:
                 try:
-                    await message.reply(roast, mention_author=False)
+                    is_bot_author = getattr(message.author, "bot", False)
+                    await message.reply(roast, mention_author=is_bot_author)
                 except Exception:
                     # Fallback to standard channel message if original message was deleted
                     await message.channel.send(roast)
